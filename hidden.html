@@ -41,7 +41,6 @@ body{
   min-height:100vh;
 }
 
-/* ------------------ Splash / Lightning ------------------ */
 #splash{
   position:fixed;
   inset:0;
@@ -149,8 +148,6 @@ h1.title{
 /* charts */
 .canvas-wrap{max-width:100%;}
 
-/* ------------------ Heatmap (365) ------------------ */
-/* We'll use a grid with grid-auto-flow: column; grid-auto-columns: var(--cell-size); rows: 7 */
 .heat-wrap{display:flex;flex-direction:column;align-items:center;gap:10px;padding-top:6px}
 .heat-grid{
   display:grid;
@@ -374,20 +371,7 @@ h1.title{
 </div>
 
 <script>
-/* ============================================================================
-   Full application JS
-   - data persistence in localStorage
-   - heatmap build and interactions
-   - charts rendering with Chart.js
-   - badges, milestones, motivational quotes
-   - timeline countdown
-   - splash handling + unlock overlay
-   ============================================================================ */
-
-/* -------------------------
-   Configuration & Quotes
-   ------------------------- */
-const STORAGE_KEY = 'chayan_jee_tracker_v2';
+const STORAGE_KEY = 'jee_progress_tracker_v2';
 
 /* 50 powerful motivational quotes (index 0 => 100, index 1 => 200, ...).
    We'll cycle if user exceeds 50*100 = 5000. */
@@ -1099,4 +1083,5 @@ window.seedRandomHistory = seedRandomHistory;
 
 </body>
 </html>
+
 
