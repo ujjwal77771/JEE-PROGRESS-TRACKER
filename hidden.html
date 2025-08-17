@@ -1,0 +1,1109 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>JEE Progress Track</title>
+
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=Orbitron:wght@500;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+/* ============================================================================
+   JEE Progress Track — Single-file app styles
+   - Splash (lightning) animation
+   - Main layout: two-column (content + sidebar)
+   - Heatmap (365 days) GitHub-style (weeks horizontally, days vertically)
+   - Charts (Chart.js canvases)
+   - Badges, timeline, motivational area
+   ============================================================================ */
+
+:root{
+  --bg:#05060a;
+  --accent:#ffb86b;
+  --accent-2:#ff6a00;
+  --muted:#8aa2b2;
+  --card:#0b0e16;
+  --text:#e8f5ff;
+
+  --pink:#ff6fa8;    /* <50 */
+  --green:#16c784;   /* 50–149 */
+  --orange:#ff7a2d;  /* >=150 */
+
+  --cell-size:12px;
+  --badge-size:34px;
+  --sidebar-w:320px;
+}
+
+/* Basic page */
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;
+  background:var(--bg);
+  color:var(--text);
+  font-family:Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+  -webkit-font-smoothing:antialiased;
+  -moz-osx-font-smoothing:grayscale;
+  -webkit-tap-highlight-color:transparent;
+  min-height:100vh;
+}
+
+/* ------------------ Splash / Lightning ------------------ */
+#splash{
+  position:fixed;
+  inset:0;
+  z-index:9999;
+  background:linear-gradient(180deg,#000,#050404);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  flex-direction:column;
+  gap:14px;
+  overflow:hidden;
+}
+.splash-title{
+  font-family:'Orbitron',sans-serif;
+  color:var(--accent);
+  font-size:clamp(20px,4.6vw,42px);
+  text-align:center;
+  letter-spacing:.06em;
+}
+.splash-sub{
+  color:var(--accent-2);
+  opacity:.95;
+  font-size:14px;
+  margin-top:2px;
+}
+
+/* animated lightning bolt (decorative) */
+.splash-lightning{
+  position:absolute;
+  left:-20%;
+  top:-10%;
+  width:6%;
+  height:150%;
+  background:linear-gradient(180deg,#fff 0%, rgba(255,255,255,0.7) 20%, rgba(255,170,0,0.6) 50%, rgba(255,100,0,0.3) 70%, transparent 90%);
+  transform:skewX(-25deg) rotate(-8deg);
+  filter:blur(0.4px);
+  animation:light-move 2.6s ease-in-out forwards;
+  opacity:0.95;
+  mix-blend-mode:screen;
+}
+@keyframes light-move{
+  0%{ left:-28%; opacity:0; transform:skewX(-25deg) rotate(-6deg) translateY(-10%); }
+  20%{ left:20%; opacity:1; transform:skewX(-25deg) rotate(-3deg) translateY(0%); }
+  55%{ left:60%; opacity:.7; transform:skewX(-20deg) rotate(2deg) translateY(4%); }
+  80%{ left:95%; opacity:.2; transform:skewX(-16deg) rotate(6deg) translateY(10%); }
+  100%{ left:140%; opacity:0; transform:skewX(-10deg) rotate(10deg) translateY(10%); }
+}
+
+/* flash white */
+.splash-flash{
+  position:absolute; inset:0; background:#fff; opacity:0;
+  animation:flash .55s 1.9s forwards;
+}
+@keyframes flash{ 0%{opacity:0} 20%{opacity:1} 100%{opacity:0} }
+
+/* ------------------ Main layout ------------------ */
+.container{
+  max-width:1200px;
+  margin:28px auto;
+  padding:0 18px;
+  display:none; /* shown after splash */
+}
+.main-grid{
+  display:grid;
+  grid-template-columns: 1fr var(--sidebar-w);
+  gap:18px;
+  align-items:start;
+}
+
+/* panels */
+.panel{
+  background:var(--card);
+  padding:14px;
+  border-radius:12px;
+  border:1px solid rgba(255,255,255,0.03);
+  box-shadow: 0 8px 30px rgba(0,0,0,0.35);
+}
+header.app-header{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  margin-bottom:12px;
+}
+.brand{
+  display:flex;
+  gap:12px;
+  align-items:center;
+}
+.logo{
+  width:52px;height:52px;border-radius:10px;
+  background:linear-gradient(135deg,var(--accent),var(--accent-2));
+  display:grid;place-items:center;color:#000;font-weight:800;font-family:'Orbitron';
+}
+h1.title{
+  margin:0;font-family:'Orbitron',sans-serif;color:var(--accent);font-size:20px;
+}
+.small{font-size:13px;color:var(--muted)}
+
+/* inputs */
+.inputs{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px}
+.inputs input{width:96px;padding:8px;border-radius:8px;border:1px solid #0f1720;background:#071018;color:var(--text);text-align:center}
+.btn{background:var(--accent-2);color:#000;border:none;padding:8px 12px;border-radius:8px;cursor:pointer;font-weight:700}
+.btn.ghost{background:transparent;border:1px solid rgba(255,255,255,0.04);color:var(--text)}
+
+/* charts */
+.canvas-wrap{max-width:100%;}
+
+/* ------------------ Heatmap (365) ------------------ */
+/* We'll use a grid with grid-auto-flow: column; grid-auto-columns: var(--cell-size); rows: 7 */
+.heat-wrap{display:flex;flex-direction:column;align-items:center;gap:10px;padding-top:6px}
+.heat-grid{
+  display:grid;
+  grid-auto-flow:column;
+  grid-auto-columns: var(--cell-size);
+  grid-template-rows: repeat(7, var(--cell-size));
+  gap:4px;
+  align-items:center;
+  justify-items:center;
+  padding:6px;
+  background:transparent;
+}
+.heat-cell{
+  width:var(--cell-size);
+  height:var(--cell-size);
+  border-radius:3px;
+  background:#141416;
+  border:1px solid rgba(0,0,0,0.25);
+  box-shadow: inset 0 -1px 0 rgba(0,0,0,0.4);
+  cursor:pointer;
+}
+.heat-cell.zero{ background:#1a1c24; }
+.heat-cell.pink{ background:var(--pink); }
+.heat-cell.green{ background:var(--green); }
+.heat-cell.orange{ background:var(--orange); }
+
+/* heat legend */
+.heat-legend{display:flex;gap:10px;align-items:center;justify-content:center;margin-top:8px;font-size:12px;color:var(--muted)}
+.legend-box{width:12px;height:12px;border-radius:3px;display:inline-block}
+
+/* ------------------ Sidebar: badges & timeline ------------------ */
+.sidebar{display:flex;flex-direction:column;gap:12px}
+.recent-badge{display:flex;align-items:center;gap:10px}
+.badge-ico{
+  width:var(--badge-size);
+  height:var(--badge-size);
+  border-radius:10px;
+  display:grid;place-items:center;
+  font-weight:800;color:#000;background:linear-gradient(135deg,var(--accent),var(--accent-2));
+  box-shadow:0 8px 26px rgba(255,150,20,0.08);
+}
+.badge-list{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.badge-pill{background:rgba(255,255,255,0.03);padding:6px 8px;border-radius:8px;font-size:12px;color:var(--muted);display:flex;gap:8px;align-items:center}
+.badge-pill.locked{opacity:.45;filter:grayscale(1)}
+
+/* timeline */
+.timeline{padding:8px;border-radius:8px;background:rgba(255,255,255,0.02)}
+.timeline .title{display:flex;justify-content:space-between;align-items:center;cursor:pointer}
+.timeline .body{max-height:0;overflow:hidden;transition:max-height .35s ease}
+.timeline.open .body{max-height:260px;padding-top:8px}
+
+/* unlock overlay (screen-break style pop) */
+#unlockOverlay{
+  position:fixed;inset:0;display:none;align-items:center;justify-content:center;z-index:10000;
+  background:linear-gradient(180deg,rgba(0,0,0,0.6),rgba(0,0,0,0.85));
+  backdrop-filter: blur(4px);
+}
+.unlock-card{width:min(520px,92vw);background:linear-gradient(135deg,#111,#1b0b00);padding:22px;border-radius:12px;border:2px solid rgba(255,140,0,0.12);display:flex;flex-direction:column;align-items:center;gap:12px;animation:pop .45s cubic-bezier(.2,.9,.3,1)}
+@keyframes pop{from{opacity:0;transform:translateY(-20px) scale(.96)}to{opacity:1;transform:translateY(0) scale(1)}}
+.unlock-badge{width:86px;height:86px;border-radius:12px;display:grid;place-items:center;font-size:34px;background:linear-gradient(90deg,var(--accent),var(--accent-2));color:#000;font-weight:900}
+.unlock-title{color:#fff;font-weight:800;font-size:18px;text-align:center}
+.unlock-motiv{color:#ffdcb0;text-align:center;font-size:14px}
+
+/* tooltip for heat cells */
+#heatTooltip{position:fixed;pointer-events:none;background:rgba(5,6,8,0.98);color:#fff;padding:6px 8px;border-radius:6px;font-size:12px;border:1px solid rgba(255,255,255,0.03);display:none;z-index:11000}
+
+/* Motivation area */
+.motivation{margin-top:12px;padding:10px;border-radius:8px;background:linear-gradient(90deg, rgba(255,184,104,0.04), rgba(255,105,0,0.02));text-align:center;font-weight:700;color:var(--accent-2)}
+
+/* responsive */
+@media (max-width:980px){
+  .main-grid{grid-template-columns:1fr}
+  .sidebar{order:2}
+  .heat-grid{transform:scale(.95)}
+}
+</style>
+</head>
+<body>
+
+<!-- SPLASH / LIGHTNING -->
+<div id="splash" aria-hidden="false">
+  <div class="splash-title">⚡ JEE Progress Track ⚡</div>
+  <div class="splash-sub">Ignite your grind — one question at a time</div>
+  <div class="splash-lightning" aria-hidden="true"></div>
+  <div class="splash-flash" aria-hidden="true"></div>
+</div>
+
+<!-- Unlock overlay (shown when badge earned) -->
+<div id="unlockOverlay" aria-hidden="true">
+  <div class="unlock-card" role="dialog" aria-modal="true">
+    <div id="unlockBadge" class="unlock-badge">🏅</div>
+    <div id="unlockTitle" class="unlock-title">Badge unlocked!</div>
+    <div id="unlockMotiv" class="unlock-motiv">Your IIT dream is closer — keep grinding like a legend!</div>
+  </div>
+</div>
+
+<!-- heat tooltip -->
+<div id="heatTooltip" aria-hidden="true"></div>
+
+<!-- MAIN APP -->
+<div class="container" aria-hidden="true">
+  <div class="main-grid">
+    <!-- LEFT: main content -->
+    <main>
+      <div class="panel">
+        <header class="app-header">
+          <div class="brand">
+            <div class="logo">JEE</div>
+            <div>
+              <h1 class="title">JEE Progress Track</h1>
+              <div class="small">Physics • Maths • Chemistry</div>
+            </div>
+          </div>
+
+          <div class="small" id="streakText">Streak: 0 days</div>
+        </header>
+
+        <!-- inputs -->
+        <div style="margin-bottom:12px">
+          <h3 style="margin:0 0 6px 0">Log Progress (values per subject: 0–100)</h3>
+          <div class="inputs">
+            <input id="inpPhysics" type="number" min="0" max="100" placeholder="Physics">
+            <input id="inpMaths" type="number" min="0" max="100" placeholder="Maths">
+            <input id="inpChemistry" type="number" min="0" max="100" placeholder="Chemistry">
+            <button class="btn" onclick="saveHandler()">Save</button>
+            <button class="btn ghost" onclick="clearInputs()">Clear</button>
+            <div style="margin-left:auto" class="small">Editing: <span id="editDateLabel">today</span></div>
+          </div>
+          <div id="todayStats" class="small" style="margin-top:8px"></div>
+        </div>
+
+        <!-- charts + heatmap -->
+        <div style="display:flex;flex-wrap:wrap;gap:12px">
+          <div style="flex:1;min-width:260px" class="panel" aria-hidden="false">
+            <h4 style="margin:0 0 8px 0">Daily Goal Split</h4>
+            <div class="canvas-wrap"><canvas id="todayDonut" height="180"></canvas></div>
+          </div>
+
+          <div style="flex:1;min-width:320px" class="panel" aria-hidden="false">
+            <h4 style="margin:0 0 8px 0">Weekly (7 days) — per subject</h4>
+            <div class="canvas-wrap"><canvas id="weeklyChart" height="180"></canvas></div>
+          </div>
+        </div>
+
+        <div style="margin-top:12px" class="panel">
+          <h4 style="margin:0 0 8px 0">365-day Heatmap</h4>
+          <div class="heat-wrap">
+            <div id="heatGrid" class="heat-grid" role="grid" aria-label="365 day heatmap"></div>
+            <div class="heat-legend" aria-hidden="false">
+              <div style="display:flex;align-items:center;gap:6px"><span class="legend-box" style="background:var(--pink)"></span><small>&lt; 50</small></div>
+              <div style="display:flex;align-items:center;gap:6px"><span class="legend-box" style="background:var(--green)"></span><small>50–149</small></div>
+              <div style="display:flex;align-items:center;gap:6px"><span class="legend-box" style="background:var(--orange)"></span><small>&ge;150</small></div>
+            </div>
+          </div>
+        </div>
+
+        <div style="margin-top:12px" class="panel">
+          <h4 style="margin:0 0 8px 0">Monthly Progress (last 30 days)</h4>
+          <div class="canvas-wrap"><canvas id="monthlyChart" height="170"></canvas></div>
+        </div>
+
+        <div class="motivation" id="motivationBox" style="display:none">
+          Motivation line will appear after you cross 100 solved questions.
+        </div>
+
+      </div>
+    </main>
+
+    <!-- RIGHT: sidebar -->
+    <aside class="sidebar">
+      <div class="panel">
+        <h4 style="margin:0 0 8px 0">Most Recent Badge</h4>
+        <div class="recent-badge" id="recentBadgeWrap">
+          <div class="badge-ico" id="recentBadgeIcon">—</div>
+          <div>
+            <div id="recentBadgeTitle" style="font-weight:800">No badges yet</div>
+            <div class="small" id="recentBadgeSub">Solve problems to unlock</div>
+          </div>
+        </div>
+
+        <div style="margin-top:10px">
+          <div class="expand" id="expandBadgesBtn" onclick="toggleBadgeList()">View badges</div>
+          <div class="badge-list" id="badgeListWrap" style="display:none;margin-top:8px"></div>
+        </div>
+      </div>
+
+      <div class="panel timeline" id="timelineCard">
+        <div class="title" onclick="toggleTimeline()">
+          <strong>📌 JEE Timeline</strong>
+          <span id="tlToggle">▼</span>
+        </div>
+        <div class="body" id="timelineBody">
+          <div style="margin-top:8px">
+            <strong>JEE Mains</strong><br>
+            <small>25 January 2026</small>
+            <div style="height:8px"></div>
+            <div style="background:#0f1113;border-radius:6px;height:8px;overflow:hidden">
+              <div id="mainsProg" style="height:100%;width:0;background:linear-gradient(90deg,var(--accent),var(--accent-2))"></div>
+            </div>
+            <div class="small" id="mainsDays">— days left</div>
+          </div>
+
+          <div style="margin-top:12px">
+            <strong>JEE Advanced</strong><br>
+            <small>22 May 2026</small>
+            <div style="height:8px"></div>
+            <div style="background:#0f1113;border-radius:6px;height:8px;overflow:hidden">
+              <div id="advProg" style="height:100%;width:0;background:linear-gradient(90deg,#ff8a00,#ff4a00)"></div>
+            </div>
+            <div class="small" id="advDays">— days left</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h4 style="margin:0 0 8px 0">Motivational History</h4>
+        <div class="small" id="motHistory">No milestones yet</div>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<script>
+/* ============================================================================
+   Full application JS
+   - data persistence in localStorage
+   - heatmap build and interactions
+   - charts rendering with Chart.js
+   - badges, milestones, motivational quotes
+   - timeline countdown
+   - splash handling + unlock overlay
+   ============================================================================ */
+
+/* -------------------------
+   Configuration & Quotes
+   ------------------------- */
+const STORAGE_KEY = 'chayan_jee_tracker_v2';
+
+/* 50 powerful motivational quotes (index 0 => 100, index 1 => 200, ...).
+   We'll cycle if user exceeds 50*100 = 5000. */
+const QUOTES = [
+  "Every great dream begins with a single question solved. Keep going.",
+  "Consistency beats talent — one hundred at a time.",
+  "Small steps every day make mountains move. Stay steady.",
+  "Your persistence is your superpower. Solve another one.",
+  "Discipline today, reward tomorrow — keep solving.",
+  "Build momentum: 100 solved is your first fortress.",
+  "Hustle quietly, let results roar in exams.",
+  "Problems solved are confidence earned. Stack them up.",
+  "Find joy in practice, not in praise.",
+  "Turn fatigue into focus — one problem more.",
+  "Grind for the future you want, not for likes.",
+  "Every correct solution sharpens your reasoning knife.",
+  "Consistency compounds — 100 becomes 1000 with routine.",
+  "When you feel like quitting, grind for 5 more minutes.",
+  "Champions repeat small wins daily.",
+  "Practice doesn't guarantee luck — it causes it.",
+  "Your future self will thank you for today's effort.",
+  "Turn the hard days into fuel for success.",
+  "Problems solved = confidence built, brick by brick.",
+  "Quiet consistency is louder than short bursts.",
+  "Train the skill, not the scoreboard.",
+  "Make each solved question your new minimum standard.",
+  "Outwork yesterday; that’s how ranks are built.",
+  "The path to IIT is boring work done brilliantly.",
+  "Focus on process. The rank will follow.",
+  "Your seat is a result of sustained effort. Keep going.",
+  "Push through doubt. The routine wins in the end.",
+  "Small habits beat motivation. Do one more.",
+  "Make practice your identity, not a chore.",
+  "Persistence beats glimpses of genius.",
+  "If you remain consistent, you become unstoppable.",
+  "Each 100 is a milestone—celebrate, then move on.",
+  "Win today's battle; the war is the final exam.",
+  "Make 100 questions a habit, not a sprint.",
+  "Hold the standard. Show up and solve.",
+  "Be patient with growth; be ruthless with excuses.",
+  "Read carefully, practice ruthlessly, perform calmly.",
+  "Turn confusion into questions; turn questions into solutions.",
+  "Stay hungry, stay humble, solve more.",
+  "Tough days create top scorers. Keep moving.",
+  "Slow improvement beats fast inconsistency.",
+  "Be the consistent one among peers.",
+  "Stack days. Build skill. Earn your result.",
+  "Solve to learn, not just to count.",
+  "Small rituals lead to massive outcomes.",
+  "Train your attention like a muscle.",
+  "When you can’t, still try — try one more.",
+  "100 questions today is a promise to your future."
+];
+
+/* -------------------------
+   Badges configuration
+   ------------------------- */
+const BADGES = [
+  { id:'b100',  label:'100',   name:'Rookie Warrior',       note:'Complete 100 questions' },
+  { id:'b500',  label:'500',   name:'Rising Force',         note:'500 total problems' },
+  { id:'b1000', label:'1000',  name:'IIT Striver',          note:'1,000 total problems' },
+  { id:'b5000', label:'5000',  name:'Legend Builder',       note:'5,000 total problems' },
+  { id:'b10000',label:'10000', name:'IIT Conqueror',        note:'10,000 total problems' },
+  { id:'s7',    label:'7d',    name:'Consistency Flame',    note:'7 consecutive days' },
+  { id:'s30',   label:'30d',   name:'Unstoppable',          note:'30 consecutive days' }
+];
+
+/* -------------------------
+   App state & persistence
+   ------------------------- */
+let state = loadState(); // { days: { 'YYYY-MM-DD': {phy,math,chem} }, badges: {id:isoString}, mtLog: [ {milestone,quote,at} ] }
+
+/* Ensure structure */
+state.days = state.days || {};
+state.badges = state.badges || {};      // map of badgeId -> { unlockedAt: iso }
+state.motLog = state.motLog || [];      // motivational unlock history
+
+/* -------------------------
+   Helpers: dates & totals
+   ------------------------- */
+function todayISO(){ return (new Date()).toISOString().slice(0,10); }
+function isoToDateString(iso){ return iso.slice(0,10); } // keep only date part
+function daysAgoDate(n){
+  const d = new Date();
+  d.setDate(d.getDate() - n);
+  return d.toISOString().slice(0,10);
+}
+function getDayObj(dateISO){
+  return state.days[dateISO] ? { phy:+state.days[dateISO].phy||0, math:+state.days[dateISO].math||0, chem:+state.days[dateISO].chem||0 } : {phy:0,math:0,chem:0};
+}
+function setDayObj(dateISO,obj){
+  state.days[dateISO] = { phy: Math.max(0, Math.min(100, +obj.phy||0)), math: Math.max(0, Math.min(100, +obj.math||0)), chem: Math.max(0, Math.min(100, +obj.chem||0)) };
+}
+function totalForDate(dateISO){
+  const d = getDayObj(dateISO);
+  return (d.phy||0) + (d.math||0) + (d.chem||0);
+}
+function totalSolvedAll(){
+  let s = 0;
+  for(const k in state.days){ const d = state.days[k]; s += (+d.phy||0) + (+d.math||0) + (+d.chem||0); }
+  return s;
+}
+function consecutiveDaysCount(maxCheck=365){
+  let count = 0;
+  for(let i=0;i<maxCheck;i++){
+    const d = getDayObj(daysAgoDate(i));
+    if((d.phy+d.math+d.chem) > 0) count++; else break;
+  }
+  return count;
+}
+
+/* -------------------------
+   Persistence
+   ------------------------- */
+function loadState(){
+  try{
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if(!raw) return {};
+    return JSON.parse(raw);
+  }catch(e){
+    console.warn("Failed loading state", e);
+    return {};
+  }
+}
+function saveState(){
+  try{
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  }catch(e){
+    console.warn("Failed saving state", e);
+  }
+}
+
+/* -------------------------
+   UI utility: element helpers
+   ------------------------- */
+function $id(id){ return document.getElementById(id); }
+
+/* -------------------------
+   Build the 365-day heatmap (left -> oldest to right -> newest)
+   ------------------------- */
+let heatGridEl = null;
+let heatCells = []; // array of {date,el}
+function buildHeatmap365(){
+  heatGridEl = $id('heatGrid');
+  heatGridEl.innerHTML = '';
+  heatCells = [];
+
+  const total = 365;
+  // Create array from oldest -> newest
+  const dates = [];
+  for(let i = total - 1; i >= 0; i--){
+    dates.push(daysAgoDate(i)); // oldest first at index 0
+  }
+
+  // Render each day into grid; grid-auto-flow: column ensures column-wise weeks layout
+  dates.forEach((dateISO, idx)=>{
+    const el = document.createElement('div');
+    el.className = 'heat-cell';
+    el.setAttribute('role','button');
+    el.setAttribute('aria-label', `Day ${dateISO}`);
+    el.dataset.date = dateISO;
+    el.dataset.idx = idx;
+    // set color/class based on stored value
+    const val = totalForDate(dateISO);
+    if(val === 0) el.classList.add('zero');
+    else if(val < 50) el.classList.add('pink');
+    else if(val < 150) el.classList.add('green');
+    else el.classList.add('orange');
+
+    // events
+    el.addEventListener('mouseenter', (ev)=> heatMouseEnter(ev, dateISO));
+    el.addEventListener('mousemove', (ev)=> heatMouseMove(ev));
+    el.addEventListener('mouseleave', (ev)=> heatMouseLeave(ev));
+    el.addEventListener('click', (ev)=> heatClick(ev, dateISO));
+
+    heatGridEl.appendChild(el);
+    heatCells.push({ date: dateISO, el });
+  });
+}
+
+/* heat tooltip logic */
+const heatTooltip = $id('heatTooltip');
+function heatMouseEnter(ev, dateISO){
+  const val = totalForDate(dateISO);
+  const dObj = getDayObj(dateISO);
+  heatTooltip.innerHTML = `<div style="font-size:12px;line-height:1.1"><strong>${dateISO}</strong><br>
+    <small style="color:var(--muted)">${dObj.phy} P • ${dObj.math} M • ${dObj.chem} C</small><br>
+    <span style="font-weight:700">${val} solved</span></div>`;
+  heatTooltip.style.display = 'block';
+  heatMouseMove(ev);
+}
+function heatMouseMove(ev){
+  if(!heatTooltip) return;
+  const pad = 10;
+  let x = ev.clientX + pad;
+  let y = ev.clientY + pad;
+  // ensure on screen
+  const w = heatTooltip.offsetWidth || 140;
+  const h = heatTooltip.offsetHeight || 50;
+  if(x + w + 8 > window.innerWidth) x = ev.clientX - w - pad;
+  if(y + h + 8 > window.innerHeight) y = ev.clientY - h - pad;
+  heatTooltip.style.left = x + 'px';
+  heatTooltip.style.top = y + 'px';
+}
+function heatMouseLeave(ev){
+  if(heatTooltip) heatTooltip.style.display = 'none';
+}
+
+/* click a heat cell: prefill inputs for that day and set editDate */
+let editDate = null; // null => save to today, otherwise save to editDate
+function heatClick(ev, dateISO){
+  const d = getDayObj(dateISO);
+  $id('inpPhysics').value = d.phy || '';
+  $id('inpMaths').value = d.math || '';
+  $id('inpChemistry').value = d.chem || '';
+  editDate = dateISO;
+  $id('editDateLabel').innerText = dateISO;
+  // show tooltip with tiny font for 3 seconds
+  heatTooltip.style.display = 'block';
+  heatTooltip.innerHTML = `<div style="font-size:11px;line-height:1.1"><strong>${dateISO}</strong><br>
+    <small style="color:var(--muted)">${d.phy} P • ${d.math} M • ${d.chem} C</small></div>`;
+  setTimeout(()=>{ heatTooltip.style.display = 'none'; }, 2500);
+}
+
+/* -------------------------
+   Charts (Chart.js)
+   ------------------------- */
+let chartToday=null, chartWeekly=null, chartMonthly=null;
+
+function renderTodayDonut(){
+  const ctx = $id('todayDonut').getContext('2d');
+  const date = editDate || todayISO();
+  const d = getDayObj(date);
+  const total = d.phy + d.math + d.chem;
+  if(chartToday) chartToday.destroy();
+  chartToday = new Chart(ctx, {
+    type:'doughnut',
+    data:{
+      labels:['Physics','Maths','Chemistry'],
+      datasets:[{ data:[d.phy,d.math,d.chem], backgroundColor:['#ff6384','#36a2eb','#ffce56'] }]
+    },
+    options:{
+      cutout:'66%',
+      plugins:{ legend: { position:'bottom' }},
+      responsive:true,
+      maintainAspectRatio:false
+    }
+  });
+  $id('todayStats').innerText = `Date: ${date} · Total: ${total} (P:${d.phy} M:${d.math} C:${d.chem})`;
+}
+
+function renderWeeklyChart(){
+  const labels = [];
+  const phy = [], math = [], chem = [];
+  for(let i=6;i>=0;i--){
+    const d = daysAgoDate(i);
+    labels.push(d.slice(5));
+    const dd = getDayObj(d);
+    phy.push(dd.phy); math.push(dd.math); chem.push(dd.chem);
+  }
+  const ctx = $id('weeklyChart').getContext('2d');
+  if(chartWeekly) chartWeekly.destroy();
+  chartWeekly = new Chart(ctx, {
+    type:'bar',
+    data:{
+      labels,
+      datasets:[
+        { label:'Physics', data:phy, backgroundColor:'#ff6384' },
+        { label:'Maths',   data:math, backgroundColor:'#36a2eb' },
+        { label:'Chemistry', data:chem, backgroundColor:'#ffce56' }
+      ]
+    },
+    options:{
+      responsive:true,
+      maintainAspectRatio:false,
+      scales:{ y:{ beginAtZero:true, max:300 }, x:{ stacked:true } },
+      plugins:{ legend:{ position:'top' } }
+    }
+  });
+}
+
+function renderMonthlyChart(){
+  const labels = [];
+  const phy = [], math = [], chem = [];
+  for(let i=29;i>=0;i--){
+    const d = daysAgoDate(i);
+    labels.push(d.slice(5));
+    const dd = getDayObj(d);
+    phy.push(dd.phy); math.push(dd.math); chem.push(dd.chem);
+  }
+  const ctx = $id('monthlyChart').getContext('2d');
+  if(chartMonthly) chartMonthly.destroy();
+  chartMonthly = new Chart(ctx, {
+    type:'line',
+    data:{
+      labels,
+      datasets:[
+        { label:'Physics', data:phy, borderColor:'#ff6384', backgroundColor:'rgba(255,99,132,0.12)', fill:true, tension:.28 },
+        { label:'Maths', data:math, borderColor:'#36a2eb', backgroundColor:'rgba(54,162,235,0.12)', fill:true, tension:.28 },
+        { label:'Chemistry', data:chem, borderColor:'#ffce56', backgroundColor:'rgba(255,206,86,0.12)', fill:true, tension:.28 }
+      ]
+    },
+    options:{
+      responsive:true,
+      maintainAspectRatio:false,
+      scales:{ y:{ beginAtZero:true, max:300 } }
+    }
+  });
+}
+
+/* -------------------------
+   Update heatmap colors after data changes
+   ------------------------- */
+function refreshHeatmapColors(){
+  heatCells.forEach(item=>{
+    const date = item.date;
+    const el = item.el;
+    const val = totalForDate(date);
+    el.classList.remove('zero','pink','green','orange');
+    if(val === 0) el.classList.add('zero');
+    else if(val < 50) el.classList.add('pink');
+    else if(val < 150) el.classList.add('green');
+    else el.classList.add('orange');
+  });
+}
+
+/* -------------------------
+   Save handler (save today's or edited date)
+   - If editDate is set, save to that date; else save to today
+   - After save: update charts, heatmap, badges, motivation
+   ------------------------- */
+function saveHandler(){
+  const phy = Math.max(0, Math.min(100, +$id('inpPhysics').value || 0));
+  const math = Math.max(0, Math.min(100, +$id('inpMaths').value || 0));
+  const chem = Math.max(0, Math.min(100, +$id('inpChemistry').value || 0));
+  const dateToSave = editDate || todayISO();
+  setDayObj(dateToSave, {phy, math, chem});
+  saveState();
+  // reset edit mode to default (keep editDate as was? we'll set to today)
+  editDate = null;
+  $id('editDateLabel').innerText = 'today';
+  renderAll();               // update charts & heatmap
+  checkBadgesAndMotivation(); // check for new badges & mot lines
+}
+
+/* clear inputs utility */
+function clearInputs(){
+  $id('inpPhysics').value = '';
+  $id('inpMaths').value = '';
+  $id('inpChemistry').value = '';
+  editDate = null;
+  $id('editDateLabel').innerText = 'today';
+}
+
+/* -------------------------
+   Badges logic: unlock & show recent
+   - badges for totals: 100, 500, 1000, 5000, 10000
+   - streak badges: 7-day, 30-day
+   - only show the most recent unlocked badge by default
+   - allow expand to show all badges with locked/earned state
+   ------------------------- */
+const totalBadgeMilestones = [100, 500, 1000, 5000, 10000];
+
+/* checks */
+function getUnlockedBadgesList(){
+  const unlocked = [];
+  for(const b of BADGES){
+    if(state.badges && state.badges[b.id]) unlocked.push({id:b.id, at:state.badges[b.id].unlockedAt});
+  }
+  // sort by unlockedAt asc
+  unlocked.sort((a,b)=> new Date(a.at) - new Date(b.at));
+  return unlocked;
+}
+
+/* compute which badges should be unlocked now based on state */
+function badgesShouldBeUnlocked(){
+  const unlock = [];
+  // totals
+  const total = totalSolvedAll();
+  if(total >= 100 && !state.badges['b100']) unlock.push('b100');
+  if(total >= 500 && !state.badges['b500']) unlock.push('b500');
+  if(total >= 1000 && !state.badges['b1000']) unlock.push('b1000');
+  if(total >= 5000 && !state.badges['b5000']) unlock.push('b5000');
+  if(total >= 10000 && !state.badges['b10000']) unlock.push('b10000');
+  // streaks
+  const cons7 = consecutiveDaysCount(365);
+  if(cons7 >= 7 && !state.badges['s7']) unlock.push('s7');
+  if(cons7 >= 30 && !state.badges['s30']) unlock.push('s30');
+  return unlock;
+}
+
+/* show overlay & persist badges */
+function checkBadgesAndMotivation(){
+  const toUnlock = badgesShouldBeUnlocked();
+  if(toUnlock.length === 0){
+    renderBadgeUI();
+    return;
+  }
+  // unlock sequentially (first)
+  for(const id of toUnlock){
+    state.badges[id] = { unlockedAt: new Date().toISOString() };
+    // add to motLog: map id to quote (if total based) or special message
+    const message = badgeMotivationMessage(id);
+    state.motLog = state.motLog || [];
+    state.motLog.push({ badgeId:id, at: new Date().toISOString(), message });
+    // show overlay for this badge (only for the first one in the new list)
+    showUnlockOverlay(id, message);
+    break; // show only one overlay at a time
+  }
+  saveState();
+  renderBadgeUI();
+}
+
+/* message mapping for badges */
+function badgeMotivationMessage(id){
+  const total = totalSolvedAll();
+  if(id === 'b100') return quoteForHundreds(Math.floor(total/100));
+  if(id === 'b500') return "500 problems — keep the intensity.";
+  if(id === 'b1000') return "1,000 problems — unstoppable momentum!";
+  if(id === 'b5000') return "5,000 problems — you're a machine.";
+  if(id === 'b10000') return "10,000 problems — IIT-level grind achieved!";
+  if(id === 's7') return "7-day streak — consistency unlocked!";
+  if(id === 's30') return "30-day streak — unshakable habit!";
+  return "Great job — milestone reached!";
+}
+
+/* show overlay with badge + message */
+function showUnlockOverlay(badgeId, message){
+  const b = BADGES.find(x=>x.id === badgeId);
+  if(!b) return;
+  $id('unlockBadge').innerText = b.id === 's7' || b.id === 's30' ? '🔥' : '🏅';
+  $id('unlockTitle').innerText = `${b.name} — ${b.label}`;
+  $id('unlockMotiv').innerText = message;
+  const overlay = $id('unlockOverlay');
+  overlay.style.display = 'flex';
+  overlay.setAttribute('aria-hidden','false');
+  setTimeout(()=>{ overlay.style.display = 'none'; overlay.setAttribute('aria-hidden','true'); }, 3200);
+}
+
+/* render badge UI: recent + list */
+let badgeListOpen = false;
+function renderBadgeUI(){
+  // recent
+  const unlocked = getUnlockedBadgesList();
+  const recentWrap = $id('recentBadgeWrap');
+  const recentIcon = $id('recentBadgeIcon');
+  const recentTitle = $id('recentBadgeTitle');
+  const recentSub = $id('recentBadgeSub');
+
+  if(unlocked.length === 0){
+    recentIcon.innerText = '—';
+    recentTitle.innerText = 'No badges yet';
+    recentSub.innerText = 'Keep solving to unlock milestones';
+  } else {
+    // most recent unlocked
+    const last = unlocked[unlocked.length - 1];
+    const b = BADGES.find(x=>x.id === last.id);
+    recentIcon.innerText = b.label || '🏅';
+    recentTitle.innerText = b.name;
+    recentSub.innerText = `${b.note} • unlocked ${new Date(last.at).toLocaleDateString()}`;
+  }
+
+  // badges list (hidden by default)
+  const wrap = $id('badgeListWrap');
+  wrap.innerHTML = '';
+  for(const b of BADGES){
+    const earned = state.badges && state.badges[b.id];
+    const pill = document.createElement('div');
+    pill.className = 'badge-pill' + (earned ? '' : ' locked');
+    pill.innerHTML = `<span style="font-weight:700">${b.label}</span> <span style="color:var(--muted);margin-left:6px">${b.name}</span>`;
+    wrap.appendChild(pill);
+  }
+
+  // mot history
+  const hist = $id('motHistory');
+  if(state.motLog && state.motLog.length > 0){
+    const last = state.motLog[state.motLog.length - 1];
+    hist.innerText = `${new Date(last.at).toLocaleString()}: ${last.message}`;
+  } else {
+    hist.innerText = 'No milestones yet';
+  }
+}
+
+/* toggle badge list */
+function toggleBadgeList(){
+  badgeListOpen = !badgeListOpen;
+  const wrap = $id('badgeListWrap');
+  wrap.style.display = badgeListOpen ? 'block' : 'none';
+  $id('expandBadgesBtn').innerText = badgeListOpen ? 'Hide badges' : 'View badges';
+}
+
+/* -------------------------
+   Motivation every 100 solved (quotes)
+   - show only latest quote for floor(total/100)
+   ------------------------- */
+function quoteForHundreds(hIndex){
+  // hIndex = current number of hundreds (e.g., total=350 => hIndex = 3)
+  // We want to show QUOTES[(hIndex-1) % QUOTES.length] when hIndex >= 1
+  if(hIndex <= 0) return null;
+  const idx = (hIndex - 1) % QUOTES.length;
+  return QUOTES[idx];
+}
+
+function updateMotivationBox(){
+  const total = totalSolvedAll();
+  const hIndex = Math.floor(total / 100);
+  const box = $id('motivationBox');
+  if(hIndex >= 1){
+    const quote = quoteForHundreds(hIndex);
+    box.style.display = 'block';
+    box.innerText = quote || "Keep pushing — milestone reached!";
+  } else {
+    box.style.display = 'none';
+    box.innerText = '';
+  }
+}
+
+/* -------------------------
+   Timeline: Mains & Advanced countdowns
+   ------------------------- */
+function updateTimeline(){
+  const mains = new Date('2026-01-25T00:00:00'); // JEE Mains
+  const adv = new Date('2026-05-22T00:00:00');   // JEE Advanced
+  const now = new Date();
+  const dayMs = 1000*60*60*24;
+  const daysTo = (d) => Math.max(0, Math.ceil((d - now) / dayMs));
+  const toM = daysTo(mains);
+  const toA = daysTo(adv);
+  $id('mainsDays').innerText = `${toM} days left`;
+  $id('advDays').innerText = `${toA} days left`;
+
+  // progress approx from now to exam: 0% at now, 100% at exam date
+  const periodM = Math.max(1, Math.ceil((mains - now) / dayMs) + toM);
+  const progM = Math.max(0, Math.min(100, Math.round((periodM - toM) / periodM * 100)));
+  const periodA = Math.max(1, Math.ceil((adv - now) / dayMs) + toA);
+  const progA = Math.max(0, Math.min(100, Math.round((periodA - toA) / periodA * 100)));
+  $id('mainsProg').style.width = progM + '%';
+  $id('advProg').style.width = progA + '%';
+}
+
+/* -------------------------
+   Render all UI components
+   ------------------------- */
+function renderAll(){
+  renderTodayDonut();
+  renderWeeklyChart();
+  renderMonthlyChart();
+  refreshHeatmapColors();
+  renderBadgeUI();
+  updateMotivationBox();
+  updateTimeline();
+  prefillTodayInputs();
+}
+
+/* prefill today's inputs */
+function prefillTodayInputs(){
+  const d = getDayObj(todayISO());
+  $id('inpPhysics').value = d.phy || '';
+  $id('inpMaths').value = d.math || '';
+  $id('inpChemistry').value = d.chem || '';
+  $id('editDateLabel').innerText = editDate || 'today';
+  $id('streakText').innerText = `Streak: ${consecutiveDaysCount(365)} days`;
+}
+
+/* -------------------------
+   Initialization & splash handling
+   ------------------------- */
+window.addEventListener('DOMContentLoaded', ()=>{
+
+  // Build heatmap structure first (cells + event handlers)
+  buildHeatmap365();
+
+  // Now render everything based on loaded state
+  renderAll();
+
+  // Splash: hide after animation or max 3s
+  const splash = $id('splash');
+  const container = $id('container') || document.querySelector('.container');
+  // if our container var not found, use document.querySelector('.container')
+  const showApp = ()=>{
+    // remove splash and show container
+    try{ splash.style.display = 'none'; }catch(e){}
+    try{ document.querySelector('.container').style.display = 'block'; }catch(e){}
+    // ensure main grid displays
+    try{ document.querySelector('.main-grid').style.display = 'grid'; }catch(e){}
+    // ensure everything re-renders now charts are visible
+    setTimeout(renderAll, 120);
+  };
+
+  // fallback: after 3s show
+  setTimeout(showApp, 3000);
+});
+
+/* -------------------------
+   Toggle timeline expand/collapse
+   ------------------------- */
+function toggleTimeline(){
+  const card = $id('timelineCard');
+  card.classList.toggle('open');
+  $id('tlToggle').innerText = card.classList.contains('open') ? '▲' : '▼';
+}
+
+/* -------------------------
+   Check badges & motivation on save (and on init)
+   ------------------------- */
+function checkBadgesAndMotivation(){
+  // call badge unlocker and also show motivation quote if new 100-milestone reached
+  const prevHundreds = state._lastHundreds || 0;
+  const total = totalSolvedAll();
+  const newHundreds = Math.floor(total / 100);
+
+  // unlock badges (if any)
+  const toUnlock = badgesShouldBeUnlocked();
+  if(toUnlock.length){
+    // unlock and show only the first
+    for(const id of toUnlock){
+      state.badges[id] = { unlockedAt: new Date().toISOString() };
+      state.motLog = state.motLog || [];
+      const message = badgeMotivationMessage(id);
+      state.motLog.push({ badgeId:id, at: new Date().toISOString(), message });
+      saveState();
+      renderBadgeUI();
+      showUnlockOverlay(id, message);
+      break;
+    }
+  }
+
+  // motivational quote on every 100
+  if(newHundreds > prevHundreds){
+    // new hundred milestone reached
+    const quote = quoteForHundreds(newHundreds);
+    if(quote){
+      // store last hundreds
+      state._lastHundreds = newHundreds;
+      // also push to motLog
+      state.motLog = state.motLog || [];
+      state.motLog.push({ badgeId: `hundred-${newHundreds}`, at: new Date().toISOString(), message: quote });
+      saveState();
+      // show unlock-like overlay but a softer modal
+      showUnlockOverlay('hundred', quote);
+    }
+  } else {
+    // nothing new
+  }
+
+  // persist last hundreds if not present
+  if(!state._lastHundreds) state._lastHundreds = Math.floor(total / 100);
+  saveState();
+}
+
+/* -------------------------
+   Helper: badgesShouldBeUnlocked (reuse above)
+   Note: this duplicates logic, but explicit */
+function badgesShouldBeUnlocked(){
+  const toUnlock = [];
+  const total = totalSolvedAll();
+  if(total >= 100 && !state.badges['b100']) toUnlock.push('b100');
+  if(total >= 500 && !state.badges['b500']) toUnlock.push('b500');
+  if(total >= 1000 && !state.badges['b1000']) toUnlock.push('b1000');
+  if(total >= 5000 && !state.badges['b5000']) toUnlock.push('b5000');
+  if(total >= 10000 && !state.badges['b10000']) toUnlock.push('b10000');
+  const cons = consecutiveDaysCount(365);
+  if(cons >= 7 && !state.badges['s7']) toUnlock.push('s7');
+  if(cons >= 30 && !state.badges['s30']) toUnlock.push('s30');
+  return toUnlock;
+}
+
+/* -------------------------
+   Utility: show sample overlay used for both badges & 100-quote
+   (the overlay content is set by calling showUnlockOverlay)
+   ------------------------- */
+/* function showUnlockOverlay already defined above */
+
+/* -------------------------
+   Misc helpers for UI demo and testing
+   ------------------------- */
+/* For debugging: function to set sample random history (not used by default) */
+function seedRandomHistory(){
+  // WARNING: this will overwrite current state.days
+  const now = new Date();
+  for(let i=0;i<365;i++){
+    const d = daysAgoDate(i);
+    // random small probability to fill values
+    const p = Math.random();
+    if(p < 0.6){
+      // low day
+      state.days[d] = { phy: Math.floor(Math.random()*40), math: Math.floor(Math.random()*40), chem: Math.floor(Math.random()*40) };
+    } else if(p < 0.9){
+      // medium
+      state.days[d] = { phy: Math.floor(30 + Math.random()*60), math: Math.floor(30 + Math.random()*60), chem: Math.floor(30 + Math.random()*60) };
+    } else {
+      // high
+      state.days[d] = { phy: Math.floor(80 + Math.random()*20), math: Math.floor(80 + Math.random()*20), chem: Math.floor(80 + Math.random()*20) };
+    }
+  }
+  saveState();
+  buildHeatmap365();
+  renderAll();
+}
+
+/* -------------------------
+   Expose a couple of functions to global scope for console testing
+   ------------------------- */
+window.renderAll = renderAll;
+window.seedRandomHistory = seedRandomHistory;
+
+/* end of script */
+</script>
+
+</body>
+</html>
