@@ -10,7 +10,7 @@
 
 ## 🔎 Project overview
 
-- Single-file web app (HTML/CSS/JS) — no backend required.
+- Single-file web app (HTML/CSS/JS) 
 - Save per-day scores, visualize trends, and track streaks.
 - Codeforces/GitHub-style heatmap covering the last 180 days.
 - Register/login using numeric phone ID + SHA-256 hashed password (client-side).
